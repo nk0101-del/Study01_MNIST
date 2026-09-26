@@ -14,3 +14,6 @@ data/
 *.pth
 *.h5
 *.ckpt
+
+# 검증 데이터 (검증데이터만들기.py 가 로컬에서 생성)
+web_version/검증데이터.json
