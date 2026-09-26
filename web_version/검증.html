@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>웹 버전 검증</title>
+<style>
+  body { font-family: "맑은 고딕", sans-serif; margin: 24px; background: #111; color: #eee; }
+  h1 { font-size: 20px; }
+  pre#요약 { background: #1c1c1c; padding: 14px; border-radius: 6px; font-size: 14px; line-height: 1.7; }
+  .합격 { color: #6ee7a8; } .불합격 { color: #ff8b8b; }
+  table { border-collapse: collapse; margin-top: 16px; font-size: 13px; }
+  th, td { border: 1px solid #333; padding: 4px 9px; text-align: right; }
+  th { background: #1c1c1c; }
+</style>
+</head>
+<body>
+<h1>웹 버전 검증</h1>
+<pre id="요약">검증을 준비하는 중입니다.</pre>
+<div id="표"></div>
+
+<script type="module">
+import { 모델불러오기 } from "./모델.js";
+
+const 요약 = document.getElementById("요약");
+const 표칸 = document.getElementById("표");
+
+function 최대절대차(가, 나) {
+  let 최대 = 0;
+  for (let i = 0; i < 가.length; i += 1) {
+    const 차 = Math.abs(가[i] - 나[i]);
+    if (차 > 최대) 최대 = 차;
+  }
+  return 최대;
+}
+
+function 최대색인(값들) {
+  let 색인 = 0;
+  for (let i = 1; i < 값들.length; i += 1) if (값들[i] > 값들[색인]) 색인 = i;
+  return 색인;
+}
+
+async function 검증데이터읽기() {
+  const 응답 = await fetch("검증데이터.json");
+  if (!응답.ok) {
+    throw new Error(
+      "검증데이터.json 을 찾을 수 없습니다.\n" +
+      "desktop_version 폴더에서 'python 검증데이터만들기.py' 를 먼저 실행해 주세요."
+    );
+  }
+  return 응답.json();
+}
+
+async function 실행() {
+  let 자료, 모델;
+  try {
+    [자료, 모델] = await Promise.all([검증데이터읽기(), 모델불러오기()]);
+  } catch (오류) {
+    요약.textContent = "준비 실패\n" + 오류.message;
+    요약.className = "불합격";
+    return;
+  }
+
+  let 순전파최대차 = 0;
+  const 줄들 = [];
+  for (const 사례 of 자료.사례들) {
+    const 입력 = Float32Array.from(사례.전처리);
+    const 확률 = 모델.추론(입력);
+    const 차 = 최대절대차(확률, 사례.확률);
+    if (차 > 순전파최대차) 순전파최대차 = 차;
+    줄들.push({ 종류: 사례.종류, 차, 예측: 최대색인(확률), 정답: 사례.정답 });
+  }
+
+  const 통과 = 순전파최대차 <= 1e-4;
+  요약.className = 통과 ? "합격" : "불합격";
+  요약.textContent =
+    `순전파 검사: ${통과 ? "합격" : "불합격"}\n` +
+    `사례 ${자료.사례들.length}개\n` +
+    `확률 최대 절대차 ${순전파최대차.toExponential(3)} (기준 1e-4 이하)`;
+
+  const 머리 = "<tr><th>#</th><th>종류</th><th>확률 최대차</th><th>예측</th><th>정답</th></tr>";
+  const 몸 = 줄들.slice(0, 20).map((줄, i) =>
+    `<tr><td>${i}</td><td>${줄.종류}</td><td>${줄.차.toExponential(2)}</td>` +
+    `<td>${줄.예측}</td><td>${줄.정답}</td></tr>`
+  ).join("");
+  표칸.innerHTML = `<table>${머리}${몸}</table><p>앞 20개만 표시합니다.</p>`;
+}
+
+실행();
+</script>
+</body>
+</html>
