@@ -13,7 +13,6 @@ const 인식버튼 = document.getElementById("인식버튼");
 const 지우기버튼 = document.getElementById("지우기버튼");
 
 let 모델 = null;
-let 적재중그렸다 = false;
 
 function 알림보이기(글) {
   알림칸.hidden = false;
@@ -30,7 +29,7 @@ function 그리기잠그기(잠글까) {
 const 그림판 = 그림판만들기(캔버스, {
   선굵기: 18,
   그리기끝: () => {
-    if (모델 === null) { 적재중그렸다 = true; return; }
+    if (모델 === null) return;
     인식하기();
   },
 });
@@ -81,8 +80,7 @@ async function 시작() {
   }
   그리기잠그기(false);
   결과칸.textContent = "인식 결과: -";
-  // 적재를 기다리는 동안 그려 둔 그림이 있으면 그대로 인식한다.
-  if (적재중그렸다) { 적재중그렸다 = false; 인식하기(); }
+  // 적재가 끝날 때까지 그리기를 막으므로, 이 시점에 그려 둔 그림은 있을 수 없다.
 }
 
 시작();
