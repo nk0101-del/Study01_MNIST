@@ -1,4 +1,9 @@
 # web_version 폴더를 GitHub Pages 로 배포한다. 빌드 단계는 없다.
+#
+# 주의: job id 와 step id 는 ASCII 여야 한다.
+# 이 저장소는 한글 이름 관례를 따르지만, GitHub Actions 의 표현식
+# (${{ steps.<id>.outputs... }})은 한글 식별자를 파싱하지 못하고
+# "Invalid workflow file" 로 실패한다. 사람이 보는 name 만 한글로 둔다.
 name: GitHub Pages 배포
 
 on:
@@ -16,10 +21,11 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  배포:
+  deploy:
+    name: 배포
     environment:
       name: github-pages
-      url: ${{ steps.배포단계.outputs.page_url }}
+      url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -27,5 +33,5 @@ jobs:
       - uses: actions/upload-pages-artifact@v3
         with:
           path: web_version
-      - id: 배포단계
+      - id: deployment
         uses: actions/deploy-pages@v4
