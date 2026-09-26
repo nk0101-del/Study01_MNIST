@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+
+# Jupyter
+.ipynb_checkpoints/
+
+# 데이터셋 / 모델 파일
+data/
+*.pt
+*.pth
+*.h5
+*.ckpt
