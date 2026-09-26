@@ -1,0 +1,31 @@
+# web_version 폴더를 GitHub Pages 로 배포한다. 빌드 단계는 없다.
+name: GitHub Pages 배포
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  배포:
+    environment:
+      name: github-pages
+      url: ${{ steps.배포단계.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: web_version
+      - id: 배포단계
+        uses: actions/deploy-pages@v4
