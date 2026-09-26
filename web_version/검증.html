@@ -20,6 +20,7 @@
 
 <script type="module">
 import { 모델불러오기 } from "./모델.js";
+import { 전처리 } from "./전처리.js";
 
 const 요약 = document.getElementById("요약");
 const 표칸 = document.getElementById("표");
@@ -50,6 +51,22 @@ async function 검증데이터읽기() {
   return 응답.json();
 }
 
+/** base64 PNG 를 280x280 명도 배열로 디코딩한다. */
+async function 명도읽기(base64) {
+  const 그림 = new Image();
+  그림.src = "data:image/png;base64," + base64;
+  await 그림.decode();
+  const 캔버스 = document.createElement("canvas");
+  캔버스.width = 그림.naturalWidth;
+  캔버스.height = 그림.naturalHeight;
+  const 붓 = 캔버스.getContext("2d", { willReadFrequently: true });
+  붓.drawImage(그림, 0, 0);
+  const 화소 = 붓.getImageData(0, 0, 캔버스.width, 캔버스.height).data;
+  const 명도 = new Uint8ClampedArray(캔버스.width * 캔버스.height);
+  for (let i = 0; i < 명도.length; i += 1) 명도[i] = 화소[i * 4];  // 흑백이라 R 만 읽으면 된다
+  return { 명도, 너비: 캔버스.width, 높이: 캔버스.height };
+}
+
 async function 실행() {
   let 자료, 모델;
   try {
@@ -61,26 +78,63 @@ async function 실행() {
   }
 
   let 순전파최대차 = 0;
+  let 체크섬어긋남 = 0;
+  const 집계 = { A: { 맞음: 0, 셈: 0, 전처리최대차: 0 }, B: { 맞음: 0, 셈: 0, 전처리최대차: 0 } };
   const 줄들 = [];
+
   for (const 사례 of 자료.사례들) {
-    const 입력 = Float32Array.from(사례.전처리);
-    const 확률 = 모델.추론(입력);
-    const 차 = 최대절대차(확률, 사례.확률);
-    if (차 > 순전파최대차) 순전파최대차 = 차;
-    줄들.push({ 종류: 사례.종류, 차, 예측: 최대색인(확률), 정답: 사례.정답 });
+    const 칸 = 집계[사례.종류];
+    칸.셈 += 1;
+
+    // 순전파 갈래: 파이썬 전처리 결과를 그대로 넣는다.
+    const 기준확률 = 모델.추론(Float32Array.from(사례.전처리));
+    const 확률차 = 최대절대차(기준확률, 사례.확률);
+    if (확률차 > 순전파최대차) 순전파최대차 = 확률차;
+
+    // 전체 갈래: 원본 그림부터 자바스크립트 경로로 통과시킨다.
+    const { 명도, 너비, 높이 } = await 명도읽기(사례.원본PNG);
+    let 합 = 0;
+    for (let i = 0; i < 명도.length; i += 1) 합 += 명도[i];
+    if (합 !== 사례.원본합) 체크섬어긋남 += 1;
+
+    const 입력 = 전처리(명도, 너비, 높이, 모델.정규화상수);
+    let 예측 = -1;
+    let 전처리차 = Number.NaN;
+    if (입력 !== null) {
+      전처리차 = 최대절대차(입력, 사례.전처리);
+      if (전처리차 > 칸.전처리최대차) 칸.전처리최대차 = 전처리차;
+      예측 = 최대색인(모델.추론(입력));
+      if (예측 === 사례.정답) 칸.맞음 += 1;
+    }
+    // 전처리가 null 이어도 조기 반환하지 않는다. 그러면 요약 줄이 안 나온다.
+    줄들.push({ 종류: 사례.종류, 확률차, 전처리차, 예측, 정답: 사례.정답 });
   }
 
-  const 통과 = 순전파최대차 <= 1e-4;
-  요약.className = 통과 ? "합격" : "불합격";
-  요약.textContent =
-    `순전파 검사: ${통과 ? "합격" : "불합격"}\n` +
-    `사례 ${자료.사례들.length}개\n` +
-    `확률 최대 절대차 ${순전파최대차.toExponential(3)} (기준 1e-4 이하)`;
+  const 정확도 = (칸) => (칸.셈 ? (100 * 칸.맞음) / 칸.셈 : 0);
+  const 검사들 = [
+    ["순전파 확률 최대차", 순전파최대차 <= 1e-4, `${순전파최대차.toExponential(3)} (기준 1e-4 이하)`],
+    ["PNG 체크섬", 체크섬어긋남 === 0, `어긋난 사례 ${체크섬어긋남}개 (기준 0개)`],
+    ["종류 A 정확도", 정확도(집계.A) >= 자료.파이썬정확도.A - 1.0,
+      `JS ${정확도(집계.A).toFixed(1)}% / 파이썬 ${자료.파이썬정확도.A}% (기준 1%p 이내)`],
+    ["종류 B 정확도", 정확도(집계.B) >= 자료.파이썬정확도.B - 1.0,
+      `JS ${정확도(집계.B).toFixed(1)}% / 파이썬 ${자료.파이썬정확도.B}% (기준 1%p 이내)`],
+    ["종류 A 절대 하한", 정확도(집계.A) >= 94.0, `${정확도(집계.A).toFixed(1)}% (기준 94% 이상)`],
+  ];
+  const 전부합격 = 검사들.every(([, 통과]) => 통과);
 
-  const 머리 = "<tr><th>#</th><th>종류</th><th>확률 최대차</th><th>예측</th><th>정답</th></tr>";
+  요약.className = 전부합격 ? "합격" : "불합격";
+  요약.textContent =
+    `전체 결과: ${전부합격 ? "합격" : "불합격"}\n\n` +
+    검사들.map(([이름, 통과, 내용]) => `  ${통과 ? "O" : "X"} ${이름}: ${내용}`).join("\n") +
+    `\n\n전처리 최대차 A ${집계.A.전처리최대차.toFixed(4)} / B ${집계.B.전처리최대차.toFixed(4)}` +
+    `\n(전처리 차이는 축소 방식이 달라 생기는 값이며 판정 기준이 아닙니다)`;
+  document.title = 전부합격 ? "검증 합격" : "검증 불합격";
+
+  const 머리 = "<tr><th>#</th><th>종류</th><th>확률 최대차</th><th>전처리 최대차</th><th>예측</th><th>정답</th></tr>";
   const 몸 = 줄들.slice(0, 20).map((줄, i) =>
-    `<tr><td>${i}</td><td>${줄.종류}</td><td>${줄.차.toExponential(2)}</td>` +
-    `<td>${줄.예측}</td><td>${줄.정답}</td></tr>`
+    `<tr><td>${i}</td><td>${줄.종류}</td><td>${줄.확률차.toExponential(2)}</td>` +
+    `<td>${Number.isNaN(줄.전처리차) ? "빈그림" : 줄.전처리차.toFixed(4)}</td>` +
+    `<td>${줄.예측 < 0 ? "-" : 줄.예측}</td><td>${줄.정답}</td></tr>`
   ).join("");
   표칸.innerHTML = `<table>${머리}${몸}</table><p>앞 20개만 표시합니다.</p>`;
 }
