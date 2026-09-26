@@ -1,24 +1,24 @@
 # CLAUDE.md (web_version)
 
-Guidance specific to the pure-JavaScript inference side. The root `CLAUDE.md` always loads too — it covers the Korean naming convention, the weight-export contract, where the normalization constants originate, polarity, and the shared 3-step preprocessing pipeline. This file does not repeat those; it covers only what is specific to this folder.
+순수 자바스크립트 추론 쪽에 특화된 안내다. 루트 `CLAUDE.md` 도 항상 함께 로드된다 — 한글 이름 관례, 가중치 내보내기 계약, 정규화 상수의 출처, 폴라리티, 두 언어가 공유하는 전처리 3단계는 그쪽에 있다. 이 문서는 그 내용을 반복하지 않고 이 폴더에만 해당하는 내용만 다룬다.
 
-## No external libraries
+## 외부 라이브러리 없음
 
-No CDN scripts, no npm, no bundler/build step. Everything is native ES modules (`<script type="module">`), loaded directly by the browser. `그림판.js`, `전처리.js`, `모델.js`, `앱.js` each do one job and pass plain values between them — no shared globals.
+CDN 스크립트도, npm 도, 번들러·빌드 단계도 없다. 모든 것이 브라우저가 직접 불러오는 네이티브 ES 모듈이다(`<script type="module">`). `그림판.js`, `전처리.js`, `모델.js`, `앱.js` 는 각각 한 가지 일만 하고 순수한 값만 주고받는다 — 전역 변수를 공유하지 않는다.
 
-## Running locally
+## 로컬 실행
 
 ```bash
 python -m http.server 8000
 ```
 
-then open `http://localhost:8000/`.
+이후 `http://localhost:8000/` 을 연다.
 
-**Opening `index.html` directly with `file://` does not work.** ES modules are blocked by CORS under `file://`, and the page fails without an obvious error on screen. Always serve over HTTP.
+**`index.html` 을 `file://` 로 직접 열면 동작하지 않는다.** `file://` 에서는 ES 모듈이 CORS 로 차단되고, 화면에는 뚜렷한 오류 없이 그냥 멈춘 것처럼 보인다. 항상 HTTP 로 서빙한다.
 
-## `가중치.bin` format contract
+## `가중치.bin` 형식 계약
 
-Headerless, delimiter-free, 8 tensors written back-to-back as **float32, little-endian**. Total: 1,199,882 floats = 4,799,528 bytes (~4.6MB). Tensor order:
+헤더도 구분자도 없이, 텐서 8개를 **float32, 리틀엔디언**으로 이어붙인다. 합계: 1,199,882개의 float = 4,799,528바이트(약 4.6MB). 텐서 순서:
 
 | # | 텐서 | 형상 | 개수 |
 | --- | --- | --- | --- |
@@ -31,49 +31,49 @@ Headerless, delimiter-free, 8 tensors written back-to-back as **float32, little-
 | 7 | `완전연결2.weight` | [10, 128] | 1280 |
 | 8 | `완전연결2.bias` | [10] | 10 |
 
-**Do not hardcode this table (or byte offsets) into `모델.js`.** The offsets are read at runtime from `가중치정보.json`, which `desktop_version/가중치내보내기.py` writes alongside `가중치.bin`. If the two ever disagree, `모델불러오기()` raises immediately (byte-length checks) rather than silently reading garbage.
+**이 표(또는 바이트 오프셋)를 `모델.js` 에 하드코딩하지 않는다.** 오프셋은 런타임에 `가중치정보.json` 에서 읽으며, 이 파일은 `desktop_version/가중치내보내기.py` 가 `가중치.bin` 과 함께 쓴다. 두 파일이 어긋나면 `모델불러오기()` 가 (바이트 길이 검사로) 즉시 예외를 던지며, 조용히 이상한 값을 읽어들이지 않는다.
 
-## Flattening order
+## 평탄화 순서
 
-PyTorch's `x.flatten(1)` on a `(64, 12, 12)` tensor flattens channel-first. The JavaScript forward pass must index the same way:
+PyTorch 의 `x.flatten(1)` 은 `(64, 12, 12)` 텐서를 채널 우선으로 평탄화한다. 자바스크립트 순전파도 같은 방식으로 색인해야 한다.
 
 ```
 색인 = 채널 * 144 + 세로 * 12 + 가로
 ```
 
-Getting this wrong produces **no error** — it just makes every prediction meaningless, silently. This is exactly what the forward-pass validation branch in `검증.html` is designed to catch.
+이걸 틀리면 **오류가 나지 않는다** — 그저 모든 예측이 조용히 무의미해질 뿐이다. `검증.html` 의 순전파 검증 갈래가 바로 이것을 잡아내도록 설계되었다.
 
-## Where JavaScript must match Python
+## 파이썬과 자바스크립트가 맞춰야 할 지점
 
-- The 3-step preprocessing pipeline (crop to bbox → scale to 20px preserving aspect ratio → paste centered → recenter by brightness center-of-mass).
-- Normalization constants — **read from `가중치정보.json` at runtime, never re-typed into any `.js` file.**
-- Polarity (black background, white strokes).
-- Canvas geometry: 280×280, stroke width 18 — same as `desktop_version/draw_app.py`'s Tk canvas.
+- 전처리 3단계(경계 상자로 자르기 → 비율 유지하며 20px 로 축소 → 중앙에 붙이기 → 밝기 무게중심으로 재정렬).
+- 정규화 상수 — **런타임에 `가중치정보.json` 에서 읽으며, 어떤 `.js` 파일에도 다시 적지 않는다.**
+- 폴라리티(검은 배경, 흰 글씨).
+- 캔버스 규격: 280×280, 선 굵기 18 — `desktop_version/draw_app.py` 의 Tk 캔버스와 동일하다.
 
-## The one intentional difference: downscaling
+## 의도적으로 다른 단 한 곳: 축소 방식
 
-`preprocess.py` uses PIL's LANCZOS resampling. `전처리.js` implements area averaging (면적평균축소) by hand instead — output pixels are computed as a weighted average over the input region they cover, including partial overlaps. This is judged by **accuracy**, not by how close the intermediate pixel values are:
+`preprocess.py` 는 PIL 의 LANCZOS 리샘플링을 쓴다. `전처리.js` 는 대신 면적 평균 축소(면적평균축소)를 직접 구현한다 — 출력 화소는 자신이 덮는 입력 영역에 대해 부분 겹침까지 포함한 가중 평균으로 계산된다. 이 선택은 중간 화소 값이 얼마나 비슷한지가 아니라 **정확도**로 판정한다.
 
 | 표본 | 파이썬 (LANCZOS) | 자바스크립트 (면적 평균) |
 | --- | --- | --- |
 | 종류 A | 96.5% | **97.0%** |
 | 종류 B | 100.0% | 100.0% |
 
-Area averaging isn't merely tolerable, it's slightly better here (one borderline case flips to correct — see root `CLAUDE.md` for why). Preprocessed-value differences are as large as 3.2457 absolute (종류 A), but that number is **not** the pass/fail criterion — final prediction accuracy is. If a future accuracy check falls below the thresholds in the table below, porting LANCZOS to JavaScript is the thing to reconsider, not before.
+면적 평균은 그저 참아줄 만한 수준이 아니라 여기서는 오히려 조금 더 낫다(경계 사례 하나가 정답으로 바뀐다 — 이유는 루트 `CLAUDE.md` 를 본다). 전처리 값 자체의 차이는 최대 3.2457(종류 A, 절대값)까지 나지만, 이 수치는 판정 기준이 **아니다** — 최종 예측 정확도가 기준이다. 앞으로 정확도 검사가 아래 표의 기준을 밑돈다면, 그때 LANCZOS 를 자바스크립트로 이식하는 것을 검토할 일이지 지금은 아니다.
 
-When implementing area averaging, watch for floating point overshoot at region boundaries: computing a scale factor as `19 * (21/19)` can land on `21.000000000000004`, which reads one element past the input array. Clamp boundary indices to the input size.
+면적 평균을 구현할 때는 영역 경계에서 부동소수점이 살짝 넘치는 것을 조심한다: 배율을 `19 * (21/19)` 로 계산하면 `21.000000000000004` 가 나올 수 있고, 이는 입력 배열을 한 칸 넘어서 읽게 만든다. 경계 색인은 입력 크기로 잘라낸다.
 
-## Why not ONNX
+## ONNX 를 쓰지 않은 이유
 
-To keep the web version's runtime dependencies at zero, and because the model is small enough (~1.2M params) that hand-writing the forward pass in JavaScript costs less than adopting and maintaining a conversion toolchain.
+웹 버전의 런타임 의존성을 0 으로 두기 위함이며, 모델이 작아서(약 120만 파라미터) 순전파를 자바스크립트로 직접 다시 쓰는 비용이 변환 도구를 들이고 유지하는 비용보다 작기 때문이다.
 
-## Validation procedure
+## 검증 절차
 
-1. From `desktop_version/`, generate the reference data: `python 검증데이터만들기.py` (writes `../web_version/검증데이터.json`).
-2. Serve `web_version/` (`python -m http.server 8000`).
-3. Open `http://localhost:8000/검증.html`.
+1. `desktop_version/` 에서 기준 데이터를 만든다: `python 검증데이터만들기.py` (`../web_version/검증데이터.json` 에 쓴다).
+2. `web_version/` 을 서빙한다 (`python -m http.server 8000`).
+3. `http://localhost:8000/검증.html` 을 연다.
 
-`검증.html` runs two independent branches per case — a forward-pass-only branch (feeding Python's own preprocessed values into `모델.js`) and a full branch (decoding the case's PNG and running it through `전처리.js` + `모델.js`) — and reports pass/fail against these criteria:
+`검증.html` 은 사례마다 독립된 두 갈래를 돌린다 — 순전파만 보는 갈래(파이썬이 이미 전처리한 값을 그대로 `모델.js` 에 넣는다)와 전체 갈래(사례의 PNG 를 디코딩해 `전처리.js` + `모델.js` 를 통과시킨다) — 그리고 다음 기준으로 합격/불합격을 보고한다.
 
 | 항목 | 기준 | 실측값 |
 | --- | --- | --- |
@@ -82,8 +82,8 @@ To keep the web version's runtime dependencies at zero, and because the model is
 | 종류 B 정확도 | 파이썬 대비 1%p 넘게 낮지 않음, 별도로도 확인 | 파이썬 100.0% / JS 100.0% |
 | 종류 A 절대 하한 | 94% 이상 | 97.0% |
 
-**`검증데이터.json` is not in git** (see `.gitignore`), so `검증.html` cannot run against the deployed GitHub Pages site — it only works locally, after step 1 above has produced the file.
+**`검증데이터.json` 은 git 에 없으므로**(`.gitignore` 참고), `검증.html` 은 배포된 GitHub Pages 사이트에서는 동작할 수 없다 — 위 1단계로 파일을 만든 뒤 로컬에서만 동작한다.
 
-## Deployment
+## 배포
 
-`.github/workflows/pages.yml` (repo root) deploys `web_version/` to GitHub Pages on every push to `main`, with no build step. Because `index.html` lives in `web_version/` rather than the repository root, GitHub Pages' default "Deploy from a branch" source will not find it — the repository's Settings → Pages → Build and deployment → Source must be set to **GitHub Actions** (a one-time, per-repository setting).
+`.github/workflows/pages.yml`(저장소 루트)이 `main` 브랜치에 푸시될 때마다 빌드 단계 없이 `web_version/` 을 GitHub Pages 에 배포한다. `index.html` 이 저장소 최상위가 아니라 `web_version/` 안에 있으므로, GitHub Pages 의 기본값인 "Deploy from a branch" 는 이 파일을 찾지 못한다 — 저장소의 Settings → Pages → Build and deployment → Source 를 **GitHub Actions** 로 설정해야 한다(저장소당 한 번만 하면 된다).

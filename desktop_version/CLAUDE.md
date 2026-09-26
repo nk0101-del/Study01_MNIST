@@ -1,73 +1,73 @@
 # CLAUDE.md (desktop_version)
 
-Guidance specific to the PyTorch/Tkinter side. The root `CLAUDE.md` always loads too — it covers the Korean naming convention, the weight-export contract shared with `web_version/`, normalization constants, polarity, and the 3-step preprocessing pipeline. This file does not repeat those; it covers only what is specific to this folder.
+PyTorch/Tkinter 쪽에 특화된 안내다. 루트 `CLAUDE.md` 도 항상 함께 로드된다 — 한글 이름 관례, `web_version/` 과 공유하는 가중치 내보내기 계약, 정규화 상수, 폴라리티, 전처리 3단계는 그쪽에 있다. 이 문서는 그 내용을 반복하지 않고 이 폴더에만 해당하는 내용만 다룬다.
 
-## Run from inside `desktop_version/`
+## `desktop_version/` 안에서 실행한다
 
-Every script here defaults to relative paths — `data`, `mnist_cnn.pt` — so **all commands below must be run with `desktop_version/` as the working directory**, not the repo root. This is a documentation-only fix: the scripts themselves were moved unchanged (`git mv`) when the repo was split, on purpose, so nothing about their behavior changed in the move.
+여기 있는 모든 스크립트는 기본값으로 상대 경로 — `data`, `mnist_cnn.pt` — 를 쓴다. 그래서 **아래 모든 명령은 저장소 루트가 아니라 `desktop_version/` 을 작업 디렉터리로 삼아 실행해야 한다.** 이것은 문서만으로 해결한 문제다: 저장소를 분리할 때 스크립트 자체는 (`git mv` 로) 내용 변경 없이 그대로 옮겼으므로, 이동 과정에서 동작이 달라진 것은 없다.
 
 ```bash
 cd desktop_version
 ```
 
-## File relationships
+## 파일 간 관계
 
-- `model.py` defines `MnistCNN`, imported by `train.py`, `draw_app.py`, and `predict.py` (all three build a model instance and either train it or load weights into it).
-- `preprocess.py` (`전처리(원본그림)`) is imported by both inference front ends, `draw_app.py` and `predict.py` — it is the bridge between drawn/photographed input and the trained model's expected `(1, 1, 28, 28)` tensor.
-- `가중치내보내기.py` and `검증데이터만들기.py` are new scripts that exist only to produce `web_version/`'s artifacts; they are not part of the original four-script core.
+- `model.py` 가 `MnistCNN` 을 정의하고, `train.py`, `draw_app.py`, `predict.py` 세 곳에서 임포트한다(셋 다 모델 인스턴스를 만들어 학습시키거나 가중치를 불러온다).
+- `preprocess.py`(`전처리(원본그림)`)는 두 추론 진입점인 `draw_app.py` 와 `predict.py` 양쪽에서 임포트한다 — 그린/촬영한 입력과, 학습된 모델이 기대하는 `(1, 1, 28, 28)` 텐서 사이를 잇는 다리다.
+- `가중치내보내기.py` 와 `검증데이터만들기.py` 는 `web_version/` 의 산출물을 만들기 위해서만 존재하는 신규 스크립트이며, 원래의 4개 스크립트 핵심에는 속하지 않는다.
 
-## `model.py` layer names are `state_dict` keys
+## `model.py` 의 계층 이름이 `state_dict` 키다
 
-`model.py` uses Korean attribute names for layers (`self.합성곱1`, `self.합성곱2`, `self.완전연결1`, `self.완전연결2`). These names **are** the keys PyTorch uses in `state_dict()`. Renaming any of them:
+`model.py` 는 계층에 한글 속성 이름(`self.합성곱1`, `self.합성곱2`, `self.완전연결1`, `self.완전연결2`)을 쓴다. 이 이름들이 **곧** PyTorch 가 `state_dict()` 에서 쓰는 키다. 이름 중 하나라도 바꾸면:
 
-- invalidates the existing `mnist_cnn.pt` checkpoint (it can no longer be loaded into the renamed model), and
-- makes `가중치내보내기.py` fail its explicit key check (it compares `state_dict` keys against a hardcoded expected list and raises with a clear message rather than silently exporting garbage).
+- 기존 `mnist_cnn.pt` 체크포인트가 무효가 되고(이름이 바뀐 모델에는 더 이상 불러올 수 없다),
+- `가중치내보내기.py` 의 명시적 키 검사가 실패한다(`state_dict` 키를 하드코딩된 기대 목록과 비교해, 조용히 이상한 값을 내보내는 대신 분명한 메시지와 함께 중단한다).
 
-## The `완전연결1` hardcoded `64 * 12 * 12`
+## `완전연결1` 의 `64 * 12 * 12` 하드코딩
 
-`self.완전연결1 = nn.Linear(64 * 12 * 12, 128)` is derived from the 28×28 input size flowing through two 3×3 convolutions and one 2×2 max-pool (28 → 26 → 24 → 12, 64 channels). If the input size or the conv/pool stack ever changes, this number must be recomputed by hand — and because it also determines the tensor shape and byte layout of `가중치.bin`, **`web_version/모델.js` must be updated to match**, since the web forward pass hardcodes the same 64×24×24 → maxpool → 64×12×12 shape assumptions.
+`self.완전연결1 = nn.Linear(64 * 12 * 12, 128)` 은 28×28 입력이 3×3 합성곱 두 번과 2×2 최대 풀링 한 번을 거치며 나오는 값이다(28 → 26 → 24 → 12, 채널 64). 입력 크기나 합성곱·풀링 구성을 바꾸면 이 숫자를 손으로 다시 계산해야 하고, 이 숫자가 `가중치.bin` 의 텐서 형상과 바이트 배치도 함께 결정하므로 **`web_version/모델.js` 도 맞춰 고쳐야 한다** — 웹 쪽 순전파가 같은 64×24×24 → 최대풀링 → 64×12×12 형상을 하드코딩하고 있기 때문이다.
 
-## `train.py` saves the best checkpoint, not the last
+## `train.py` 는 최고 체크포인트를 저장한다(마지막이 아니라)
 
-`train.py` evaluates accuracy after every epoch and calls `torch.save` **only when eval accuracy improves** on the previous best. So `mnist_cnn.pt` is always the best-seen checkpoint across the run, not whatever the final epoch produced — a later epoch that regresses will not overwrite it.
+`train.py` 는 매 에포크가 끝날 때마다 정확도를 평가하고, **평가 정확도가 직전 최고치보다 오를 때만** `torch.save` 를 호출한다. 그래서 `mnist_cnn.pt` 는 학습 전체에서 가장 좋았던 체크포인트를 항상 담고 있으며, 마지막 에포크의 결과가 아니다 — 뒤에 나온 에포크가 정확도가 떨어졌다면 그 값으로 덮어쓰지 않는다.
 
-## `draw_app.py`: canvas and PIL image must both be updated
+## `draw_app.py`: 캔버스와 PIL 이미지를 둘 다 갱신해야 한다
 
-Tk `Canvas` contents cannot be read back. `draw_app.py` works around this by keeping a PIL `Image` (`self.그림` / `self.그리기`) that mirrors the visible canvas pixel-for-pixel. Every drawing operation (`선_시작`, `선_그리기`, `지우기`) issues **two** calls — one on `self.캔버스` (what the user sees) and one on `self.그리기` (what actually gets fed to `전처리`). Adding a new drawing operation without updating both means the prediction silently stops matching what's on screen.
+Tk `Canvas` 는 내용을 다시 읽어올 수 없다. `draw_app.py` 는 이를 우회하기 위해 화면의 캔버스와 화소 단위로 똑같은 PIL `Image`(`self.그림` / `self.그리기`)를 함께 들고 있다. 모든 그리기 동작(`선_시작`, `선_그리기`, `지우기`)은 **두 번** 호출된다 — 하나는 `self.캔버스`(사용자가 보는 것), 하나는 `self.그리기`(실제로 `전처리` 에 들어가는 것). 새 그리기 동작을 추가하면서 둘 중 하나만 갱신하면, 예측 결과가 화면에 보이는 그림과 조용히 어긋나기 시작한다.
 
 ## `predict.py --반전`
 
-`predict.py` expects black background/white strokes like the training data. Pass `--반전` when recognizing a photo or scan that is the opposite — white background, dark ink/pencil — so `ImageOps.invert` fixes the polarity before `전처리` runs.
+`predict.py` 는 학습 데이터와 같은 검은 배경·흰 글씨를 기대한다. 그 반대인 사진이나 스캔본 — 흰 배경에 어두운 글씨 — 을 인식할 때는 `--반전` 을 붙여서, `전처리` 가 실행되기 전에 `ImageOps.invert` 가 폴라리티를 바로잡게 한다.
 
-## Commands
+## 명령
 
-Install (CPU wheels):
+설치 (CPU 휠):
 
 ```bash
 pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
 ```
 
-Train (downloads MNIST into `data/` on first run, writes `mnist_cnn.pt`):
+학습 (첫 실행 시 `data/` 에 MNIST 를 내려받고 `mnist_cnn.pt` 를 저장한다):
 
 ```bash
 python train.py
 python train.py --에포크 5 --배치크기 256 --학습률 0.0005
 ```
 
-Run the drawing GUI (requires `mnist_cnn.pt`; needs a display + tkinter):
+그리기 GUI 실행 (`mnist_cnn.pt` 필요, 디스플레이 + tkinter 필요):
 
 ```bash
 python draw_app.py
 ```
 
-Recognize image files:
+이미지 파일 인식:
 
 ```bash
 python predict.py 숫자사진.png
 python predict.py 그림1.png 그림2.png --반전
 ```
 
-Produce the artifacts the web version needs (run after training; both write into `../web_version` by default):
+웹 버전이 필요로 하는 산출물 만들기 (학습 후 실행, 둘 다 기본값으로 `../web_version` 에 쓴다):
 
 ```bash
 python 가중치내보내기.py          # 가중치.bin + 가중치정보.json
@@ -76,16 +76,16 @@ python 검증데이터만들기.py         # 검증데이터.json (JS 이식 대
 python 검증데이터검사.py           # 검증데이터.json 이 쓸 만한지 확인
 ```
 
-## Verifying a change
+## 변경 확인하기
 
-There are no automated tests. To verify a change, train briefly and check the reported eval accuracy:
+자동화된 테스트는 없다. 변경을 확인하려면 짧게 학습시켜 보고 보고된 평가 정확도를 확인한다.
 
 ```bash
 python train.py --에포크 1
 ```
 
-Expect roughly 98%+ eval accuracy after one epoch. Then, for anything touching the inference path, run `predict.py` on a sample image.
+한 에포크 후 대략 98% 이상의 평가 정확도를 기대한다. 추론 경로를 건드렸다면 이어서 `predict.py` 를 예시 이미지에 돌려 본다.
 
-## Not in git
+## git 에 없는 것
 
-`data/` (MNIST download) and `*.pt` are gitignored, so a fresh clone must run `python train.py` before either inference entry point, or `가중치내보내기.py` / `검증데이터만들기.py`, will work. `draw_app.py` and `predict.py` already raise a `FileNotFoundError` with that instruction when the weights are missing.
+`data/`(MNIST 다운로드)와 `*.pt` 는 gitignore 대상이므로, 새로 클론했다면 `python train.py` 를 먼저 실행해야 두 추론 진입점은 물론 `가중치내보내기.py` / `검증데이터만들기.py` 도 동작한다. `draw_app.py` 와 `predict.py` 는 가중치가 없으면 이미 그 안내와 함께 `FileNotFoundError` 를 낸다.

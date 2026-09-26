@@ -1,66 +1,66 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+이 파일은 Claude Code(claude.ai/code)가 이 저장소에서 작업할 때 참고하는 안내다.
 
-## Project
+## 프로젝트
 
-Study project: a PyTorch CNN that recognizes MNIST handwritten digits, offered through two independent front ends that share no code:
+MNIST 손글씨 숫자를 인식하는 PyTorch CNN 학습 프로젝트로, 코드를 공유하지 않는 두 개의 독립된 프런트엔드로 제공된다.
 
-- **`desktop_version/`** — the original PyTorch + Tkinter code. This is the only place training happens; it also produces the weight files the web version consumes. See `desktop_version/CLAUDE.md` for details.
-- **`web_version/`** — a dependency-free, pure JavaScript reimplementation (ES modules only, no CDN/npm/build step) that only performs inference, deployed statically to GitHub Pages. See `web_version/CLAUDE.md` for details.
+- **`desktop_version/`** — 원래의 PyTorch + Tkinter 코드. 학습이 일어나는 유일한 곳이며, 웹 버전이 쓸 가중치 파일도 여기서 만든다. 자세한 내용은 `desktop_version/CLAUDE.md` 를 본다.
+- **`web_version/`** — 외부 의존성이 없는(ES 모듈만 쓰고 CDN·npm·빌드 단계 없음) 순수 자바스크립트 재구현으로, 추론만 수행하며 GitHub Pages 에 정적으로 배포된다. 자세한 내용은 `web_version/CLAUDE.md` 를 본다.
 
-This file covers only what both versions share. Each subfolder's `CLAUDE.md` loads in addition to this one when working on files inside it, so version-specific commands and details live there, not here — keeping them in one place only avoids the two drifting apart.
+이 문서는 두 버전이 공유하는 내용만 다룬다. 각 하위 폴더의 `CLAUDE.md` 는 그 폴더의 파일을 다룰 때 이 문서에 더해 함께 로드되므로, 버전별 명령과 세부 사항은 이 문서가 아니라 하위 문서에 둔다 — 한 곳에만 두어야 나중에 두 버전이 어긋나지 않는다.
 
-## Language convention (important)
+## 언어 관례 (중요)
 
-**All code is written in Korean**: identifiers, attributes, function names, docstrings, comments, and even CLI flags (`--에포크`, `--배치크기`, `--학습률`, `--반전`, `--가중치`), in both the Python and the JavaScript. Only external API names stay in English (PyTorch/PIL/Tkinter on the desktop side; DOM/Canvas/fetch on the web side). New code and any new flags must follow the same convention.
+**모든 코드는 한글로 작성한다**: 식별자, 속성, 함수 이름, docstring, 주석, CLI 플래그(`--에포크`, `--배치크기`, `--학습률`, `--반전`, `--가중치`)까지 파이썬과 자바스크립트 양쪽 모두에 적용된다. 외부 API 이름만 영어로 남는다(데스크톱 쪽은 PyTorch/PIL/Tkinter, 웹 쪽은 DOM/Canvas/fetch). 새 코드와 새 플래그도 같은 관례를 따라야 한다.
 
-## The link between the two versions: weights
+## 두 버전을 잇는 연결 고리: 가중치
 
-The two versions share no code. The **only** connection between them is the weight file the desktop version exports, flowing one way:
+두 버전은 코드를 공유하지 않는다. 둘을 잇는 **유일한** 연결 고리는 데스크톱 버전이 내보내는 가중치 파일이며, 흐름은 한 방향이다.
 
 ```
 train.py → mnist_cnn.pt → 가중치내보내기.py → web_version/가중치.bin + 가중치정보.json → 모델.js
 ```
 
-`가중치.bin` is a headerless, delimiter-free, little-endian float32 dump of the model's 8 tensors, back to back. `가중치정보.json` is what tells `모델.js` where each tensor starts and how many floats it holds, so the layout lives in one JSON file rather than being hardcoded twice. Both files are generated artifacts, but — unlike `mnist_cnn.pt` — they are committed, since `web_version/` needs them to run without the desktop side present (e.g. on GitHub Pages).
+`가중치.bin` 은 모델의 텐서 8개를 이어붙인, 헤더도 구분자도 없는 리틀엔디언 float32 덤프다. `가중치정보.json` 은 각 텐서가 어디서 시작하고 몇 개의 float 를 담는지 `모델.js` 에게 알려주는 파일로, 이 레이아웃을 두 곳에 하드코딩하는 대신 하나의 JSON 파일에만 싣기 위함이다. 두 파일 모두 산출물이지만 — `mnist_cnn.pt` 와 달리 — 커밋한다. `web_version/` 이 데스크톱 쪽 없이도(예: GitHub Pages 에서) 동작해야 하기 때문이다.
 
-No common format like ONNX is used. The weights are exported directly and the forward pass is hand-written again in JavaScript. Reasoning: this keeps the web version's runtime dependencies at zero, and the model is small enough that rewriting the forward pass costs less than adopting a conversion toolchain.
+ONNX 같은 공용 형식은 쓰지 않는다. 가중치를 직접 내보내고 순전파를 자바스크립트로 다시 작성한다. 이유: 웹 버전의 런타임 의존성을 0 으로 두기 위함이고, 모델이 작아 순전파를 다시 쓰는 비용이 변환 도구를 들이는 비용보다 작기 때문이다.
 
-### Normalization constants — single source of truth
+### 정규화 상수 — 출처는 하나
 
-The normalization constants `평균 = 0.1307` / `표준편차 = 0.3081` originate in **`train.py`** and are duplicated once, deliberately, in `desktop_version/preprocess.py` (both must stay identical — a mismatch silently degrades predictions). The web version does **not** hold a third copy: `가중치내보내기.py` reads the constants from `preprocess.py` and writes them into `가중치정보.json`, and `web_version/전처리.js` / `모델.js` read them from there at runtime. Never hardcode these two numbers into any JavaScript file.
+정규화 상수 `평균 = 0.1307` / `표준편차 = 0.3081` 은 **`train.py`** 에서 비롯되며, `desktop_version/preprocess.py` 에 의도적으로 한 번 더 적혀 있다(둘은 반드시 같은 값이어야 한다 — 어긋나면 예측 정확도가 조용히 떨어진다). 웹 버전은 세 번째 사본을 두지 **않는다**: `가중치내보내기.py` 가 `preprocess.py` 에서 상수를 읽어 `가중치정보.json` 에 써넣고, `web_version/전처리.js` / `모델.js` 는 그것을 런타임에 읽는다. 이 두 숫자를 어떤 자바스크립트 파일에도 하드코딩하지 않는다.
 
-### Polarity
+### 폴라리티
 
-The model is trained on **black background, white strokes**. Every input path — `draw_app.py`'s canvas, the web grid's canvas, `predict.py --반전` for inverted photos — must produce that same polarity before preprocessing. Any new input path must match it too.
+모델은 **검은 배경·흰 글씨**로 학습되었다. `draw_app.py` 의 캔버스, 웹 그림판의 캔버스, `predict.py --반전` 이 처리하는 반전된 사진 등 모든 입력 경로는 전처리 전에 이 폴라리티를 맞춰야 한다. 새로 추가되는 입력 경로도 마찬가지다.
 
-### Preprocessing — the shared 3-step pipeline
+### 전처리 — 두 언어가 공유하는 3단계
 
-Both `desktop_version/preprocess.py` and `web_version/전처리.js` implement the same three steps, independently, in their own language:
+`desktop_version/preprocess.py` 와 `web_version/전처리.js` 는 각자의 언어로 같은 3단계를 독립적으로 구현한다.
 
-1. crop to the bounding box of non-zero pixels (PIL `getbbox()` / an equivalent scan)
-2. scale so the longest side becomes 20px, preserving aspect ratio, and paste centered on a 28×28 black canvas
-3. treat brightness as mass, find its center of gravity, and shift the image so that center lands on (13.5, 13.5)
+1. 0이 아닌 화소의 경계 상자로 자른다 (PIL `getbbox()` 또는 그에 상응하는 스캔)
+2. 가로세로 비율을 유지하며 긴 변이 20px 이 되도록 축소하고, 28×28 검은 바탕 중앙에 붙인다
+3. 명도를 무게로 보아 무게중심을 구하고, 그 중심이 (13.5, 13.5) 에 오도록 평행이동한다
 
-The **only** place the two implementations intentionally differ is the downscaling algorithm in step 2: Python uses PIL's LANCZOS, JavaScript implements area averaging by hand. This difference is measured, not assumed away — see the accuracy figures below and `web_version/CLAUDE.md` for the full reasoning.
+두 구현이 **의도적으로** 다른 곳은 2단계의 축소 알고리즘 하나뿐이다: 파이썬은 PIL 의 LANCZOS 를, 자바스크립트는 직접 구현한 면적 평균을 쓴다. 이 차이는 짐작이 아니라 실측으로 확인했다 — 아래 정확도 수치와 `web_version/CLAUDE.md` 의 상세한 근거를 본다.
 
-## Measured accuracy (Task 5 validation run)
+## 실측 정확도 (태스크 5 검증 결과)
 
-Forward-pass parity (same 28×28 input, max absolute difference across the 10 output probabilities): **2.975e-7** (threshold ≤ 1e-4).
+순전파 일치도(같은 28×28 입력에 대한 확률 10개의 최대 절대차): **2.975e-7** (기준 1e-4 이하).
 
 | 표본 | 파이썬 정확도 | 자바스크립트 정확도 |
 | --- | --- | --- |
 | 종류 A (정격, 200장) | 96.5% | **97.0%** |
 | 종류 B (변형, 30장) | 100.0% | 100.0% |
 
-JavaScript scoring 0.5pp higher than Python on 종류 A is not a bug: the two downscaling algorithms disagree on one borderline case (case #8), and area averaging happens to land on the correct digit there. Preprocessed-value differences are as large as 3.2457 (종류 A) / 0.2927 (종류 B) absolute, yet predictions barely move — which is exactly why preprocessing-value differences are not used as the pass/fail criterion; final accuracy is.
+자바스크립트가 종류 A 에서 파이썬보다 0.5%p 높은 것은 결함이 아니다: 두 축소 알고리즘이 경계 사례 하나(사례 #8)에서 의견이 갈리는데, 마침 면적 평균 쪽이 정답을 맞힌다. 전처리 값 자체의 차이는 최대 3.2457(종류 A) / 0.2927(종류 B)로 작지 않지만 예측은 거의 흔들리지 않는다 — 그래서 전처리 값의 차이를 판정 기준으로 쓰지 않고 최종 정확도로 판정한다.
 
-## Running each version
+## 각 버전 실행하기
 
-- Desktop (train / draw / predict): run from inside `desktop_version/` — see `desktop_version/CLAUDE.md`.
-- Web (static inference app): serve `web_version/` over HTTP — see `web_version/CLAUDE.md`.
+- 데스크톱 (학습 / 그리기 / 예측): `desktop_version/` 안에서 실행한다. 예: `python draw_app.py` — 자세한 내용은 `desktop_version/CLAUDE.md`.
+- 웹 (정적 추론 앱): `web_version/` 을 HTTP 로 서빙한다. 예: `python -m http.server 8000` — 자세한 내용은 `web_version/CLAUDE.md`.
 
-## Not in git
+## git 에 없는 것
 
-`desktop_version/data/` (MNIST download) and `desktop_version/*.pt` are gitignored; `web_version/검증데이터.json` is also gitignored. See each subfolder's `CLAUDE.md` for what that means for a fresh clone.
+`desktop_version/data/`(MNIST 다운로드)와 `desktop_version/*.pt` 는 gitignore 대상이며, `web_version/검증데이터.json` 도 마찬가지다. 새로 클론했을 때 이것이 무엇을 뜻하는지는 각 하위 폴더의 `CLAUDE.md` 를 본다.
