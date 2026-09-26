@@ -62,6 +62,9 @@ button:hover:not(:disabled) { background: #333; }
 button:disabled { opacity: 0.4; cursor: default; }
 
 .알림 {
+  /* 적재 실패 안내는 \n 으로 나눈 여러 문장이다. 이게 없으면 한 줄로 붙는다. */
+  white-space: pre-line;
+  text-align: left;     /* main 의 가운데 정렬을 물려받으면 여러 줄이 읽기 어렵다 */
   margin-top: 14px;
   padding: 10px;
   font-size: 13px;
