@@ -66,6 +66,17 @@ ONNX 같은 공용 형식은 쓰지 않는다. 가중치를 직접 내보내고 
 - 데스크톱 (학습 / 그리기 / 예측): `desktop_version/` 안에서 실행한다. 예: `python draw_app.py` — 자세한 내용은 `desktop_version/CLAUDE.md`.
 - 웹 (정적 추론 앱): `web_version/` 을 HTTP 로 서빙한다. 예: `python -m http.server 8000` — 자세한 내용은 `web_version/CLAUDE.md`.
 
+## 지침 문서 4개
+
+| 파일 | 담는 것 | 언제 읽히나 |
+| --- | --- | --- |
+| `CLAUDE_전역.md` | 프로젝트와 무관한 개인 작업 지침 | **읽히지 않는다** — 아래 설명 참고 |
+| `CLAUDE.md` (이 파일) | 두 버전의 관계, 가중치 흐름, 공통 규칙 | 이 저장소를 열면 항상 |
+| `desktop_version/CLAUDE.md` | 파이썬 쪽 사정 | `desktop_version/` 안의 파일을 다룰 때 추가로 |
+| `web_version/CLAUDE.md` | 자바스크립트 쪽 사정 | `web_version/` 안의 파일을 다룰 때 추가로 |
+
+`CLAUDE_전역.md` 는 저장소 안에 있지만 **세션에 자동으로 읽히지 않는다.** 자동으로 읽히는 이름은 `CLAUDE.md` 뿐이다. 이 파일은 각자의 `~/.claude/CLAUDE.md` 를 복사해 둔 스냅샷이며, 참고하라고 저장소에 넣은 것이다. 실제로 모든 세션에서 읽히는 것은 각자 컴퓨터의 `~/.claude/CLAUDE.md` 이므로, 이 지침을 적용하려면 그쪽에 반영해야 한다.
+
 ## git 에 없는 것
 
 `desktop_version/data/`(MNIST 다운로드)와 `desktop_version/*.pt` 는 gitignore 대상이며, `web_version/검증데이터.json` 도 마찬가지다. 새로 클론했을 때 이것이 무엇을 뜻하는지는 각 하위 폴더의 `CLAUDE.md` 를 본다.
